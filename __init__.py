@@ -1,8 +1,8 @@
 '''
-Copyright (C) 2018 YOUR NAME
-YOUR@MAIL.com
+Copyright (C) 2018 Mateusz Grzeliński
+czubaka111@gmail.com
 
-Created by YOUR NAME
+Created by Mateusz Grzeliński
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ bl_info = {
     "version": (0, 0, 1),
     "blender": (2, 79, 0),
     "location": "View3D > Tool Shelf > Animation",
-    "warning": "This addon is still in development.",
+    "warning": "This addon is stable, still in development.",
     "wiki_url": "",
     "category": "Animation" }
 

@@ -14,7 +14,7 @@ log.setLevel(level=logging.INFO)
 # running script multiple times adds new handler every time
 if len(log.handlers) == 0:
     console_handler = logging.StreamHandler()
-    #console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
+    console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
     formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
     console_handler.setFormatter(formatter)
     log.addHandler(console_handler)
@@ -144,7 +144,7 @@ class HandheldAnimate(bpy.types.Operator):
     bl_label = "Modal Timer Operator"
     
     status = "Connect"  # used for button in panel
-    running = False  # used for poll func only
+    running = False  # used for poll func 
     connection_thread = None
     timer = None
     handler_exists = False
@@ -152,7 +152,7 @@ class HandheldAnimate(bpy.types.Operator):
     
     @classmethod
     def poll(cls, context):
-        """ Disable creating new instances of operator if operator is running """
+        """ Disable creating new instances of operator if operator is running (and make button gray)"""
         return not HandheldAnimate.running and context.area.type == 'VIEW_3D'
     
     def modal(self, context, event):        
@@ -235,7 +235,7 @@ class HandheldAnimate(bpy.types.Operator):
             
     def update_object_on_frame_changed(self, scene):
         name = scene.handheld_data.selected_object
-        obj = bpy.data.objects[name] 
+        obj = bpy.data.objects[name]
         try: 
             self.update_object(
                 obj, 
