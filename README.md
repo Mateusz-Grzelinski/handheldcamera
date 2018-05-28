@@ -1,7 +1,7 @@
 # The ultimate handheld camera animation
 
 ## Functionality
-This addon allows you to capture yours phone movement data (in conjunction with an app) and use it to animate object in your scene  in real time.
+This addon allows you to capture yours phone movement data (in conjunction with an app) and use it to animate object in your scene  in semi real time.
 
 ## Installation 
 Download as zip, install as any other addon from user settings.
@@ -17,8 +17,7 @@ What can go wrong?
   - [How to check my IP address?](http://www.howtofindmyipaddress.com/)
 
 # Warning:
-  - this is my first addon in Blender
   - addon still in development
   - animation will override existing keyframes
   - only one object is supported (I do not plan any mocap setup)
-  - **the phone app does not exists yet.** The addon is being developed as term project and server side is being developed using Rasperry PI/Arduino and the app must wait. If you want to contribute contact me: czubaka111@gmail.com
+  - **the phone app does not exists yet.** The addon is being developed as term project and server side is being developed using Rasperry PI/Arduino and the app must wait.
