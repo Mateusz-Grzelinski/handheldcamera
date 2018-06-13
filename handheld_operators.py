@@ -212,8 +212,22 @@ class HandheldAnimate(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def execute(self, context):
+        def acc_transform(acc):
+            f = lambda x: x/16384 * 10
+            ret = []
+            for i in acc:
+                ret.append(f(i))
+            return ret
+
+        def rot_transform(rot):
+            f = lambda x: x/131
+            ret = []
+            for i in rot:
+                ret.append(f(i))
+            return ret
+
         HandheldAnimate.running = True
-        self.connection_thread = HandheldClient(context)
+        self.connection_thread = HandheldClient(context, acc_transform, rot_transform)
         self.connection_thread.start()
 
         # add timer for static updates:
