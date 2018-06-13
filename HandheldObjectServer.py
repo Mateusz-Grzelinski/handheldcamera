@@ -58,8 +58,8 @@ def serveSingleClient(conn, address):
     try:
         while send_data:
             # send fake acceleration data
-            acceleration[0] = (random.random() - 0.5) / 3000
-            rotation[0] = (random.random() - 0.5) * 20
+            acceleration[0] = (random.random() - 0.5) * 200
+            rotation[0] = (random.random() - 0.5) * 200
             message = ''
             for i in acceleration:
                 message += str(i) + ' '

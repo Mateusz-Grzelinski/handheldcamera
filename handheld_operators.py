@@ -11,8 +11,7 @@ from . import handheld_panel
 
 log = logging.getLogger(__name__)
 # set verbosity level
-log.setLevel(level=logging.INFO)
-
+log.setLevel(level=logging.DEBUG)
 
 # running script multiple times adds new handler every time
 if len(log.handlers) == 0:
@@ -32,9 +31,11 @@ class HandheldClient(threading.Thread):
         self._receiving = False
         # for syncing acces to deltas
         self.lock_loc_rot = threading.Lock()
-        self.speed = [0, 0, 0]
+        self._speed_loc = [0, 0, 0]
         self._delta_loc = [0, 0, 0]
+        self._speed_rot = [0, 0, 0]
         self._delta_rot = [0, 0, 0]
+        self._last_delta_update_time = None
         self._last_parsed_packet_time = None  # used for calculating location from acceleration
         # income data may need some user defined processing 
         self.acc_transform = acc_transform
@@ -44,6 +45,7 @@ class HandheldClient(threading.Thread):
     @property
     def delta_loc(self):
         """Getter: reset delta location to [0, 0, 0] and return original"""
+        self.update_loc_rot_delta()
         tmp = self._delta_loc
         with self.lock_loc_rot:
             self._delta_loc = [0, 0, 0]
@@ -58,6 +60,7 @@ class HandheldClient(threading.Thread):
     @property
     def delta_rot(self):
         """Getter: reset delta rotation to [0, 0, 0] and return original"""
+        self.update_loc_rot_delta()
         tmp = self._delta_rot
         with self.lock_loc_rot:
             self._delta_rot = [0, 0, 0]
@@ -108,19 +111,15 @@ class HandheldClient(threading.Thread):
         # data ends with ';' what leaves empty string at the end 
         data = data.split(';')[:-1]
         for single_datagram in data:
-            acc, rot, time = self.parse_single_datagram(single_datagram)
-            with self.lock_loc_rot:
-                for i, delta in enumerate(self.calculate_loc_delta(acc, time)):
-                    self._delta_loc[i] += delta
-                for i, delta in enumerate(rot):
-                    self._delta_rot[i] += delta
-        log.debug("current location delta: {}, rotation delta: {}".format(self._delta_loc, self._delta_rot))
+            loc_acc, rot_acc, current_time = self.parse_single_datagram(single_datagram)
+            self.update_loc_rot_speed(loc_acc, rot_acc, current_time)
+        log.debug("current loc delta: {}, rot delta: {}".format(self._delta_loc, self._delta_rot))
 
     def parse_single_datagram(self, single_datagram):
         data = single_datagram.split()
         acc = [float(i) for i in data[0:3]]
         rot = [float(i) for i in data[3:6]]
-        time = float(data[6])
+        current_time = float(data[6]) / 1000
 
         # apply user defined functions if exist
         if self.acc_transform is not None:
@@ -129,18 +128,37 @@ class HandheldClient(threading.Thread):
         if self.rot_transform is not None:
             rot = self.rot_transform(rot)
 
-        return acc, rot, time
+        return acc, rot, current_time
 
-    def calculate_loc_delta(self, acc, time):
-        """Changes acceleration to position change in time: s = 2*a/t^2 - constant interpolation"""
+    def update_loc_rot_speed(self, loc_acc, rot_acc, time):
+        """Changes loc, rot acceleration to current speed: v = a*t, - constant interpolation"""
         if self._last_parsed_packet_time is None:
             self._last_parsed_packet_time = time
             return [0, 0, 0]
         time_delta = time - self._last_parsed_packet_time
         self._last_parsed_packet_time = time
-        # use scale to limit effect
-        translate = lambda x: self.handheld_data.scale * 2 * x / time_delta ** 2
-        return map(translate, acc)
+
+        with self.lock_loc_rot:
+            for i, a in enumerate(loc_acc):
+                self._speed_loc[i] += a * time_delta
+
+            for i, a in enumerate(rot_acc):
+                self._speed_rot[i] += a * time_delta
+
+    def update_loc_rot_delta(self):
+        if self._last_delta_update_time is None:
+            self._last_delta_update_time = time.time()
+            return
+        current_time = time.time()
+        time_delta = current_time - self._last_delta_update_time
+        self._last_delta_update_time = current_time
+
+        with self.lock_loc_rot:
+            for i, xyz in enumerate(self._speed_loc):
+                self._delta_loc[i] += xyz * time_delta
+
+            for i, xyz in enumerate(self._speed_rot):
+                self._delta_rot[i] += xyz * time_delta
 
 
 class HandheldAnimate(bpy.types.Operator):
@@ -214,14 +232,14 @@ class HandheldAnimate(bpy.types.Operator):
 
     def execute(self, context):
         def acc_transform(acc):
-            f = lambda x: x/16384 * 10
+            f = lambda x: x / 16384 * 10
             ret = []
             for i in acc:
                 ret.append(f(i))
             return ret
 
         def rot_transform(rot):
-            f = lambda x: x/131
+            f = lambda x: x / 131
             ret = []
             for i in rot:
                 ret.append(f(i))
