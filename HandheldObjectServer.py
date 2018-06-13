@@ -27,7 +27,7 @@ mySocket = socket.socket()
 def main():
     global send_data
     threading.Thread(target=startServer, daemon=True).start()
-    while (input("q for end, enter to kill connection: ") != 'q'):
+    while input("q for end, enter to kill connection: ") != 'q':
         send_data = False
         time.sleep(0.1)
         send_data = True
@@ -70,6 +70,8 @@ def serveSingleClient(conn, address):
 
             conn.send(message.encode())
             time.sleep(1 / 100)
+    except BrokenPipeError:
+        logging.info("Broken pipe. Sending data, when client closed connection")
     except socket.error:
         logging.exception("failed to send data")
     finally:
