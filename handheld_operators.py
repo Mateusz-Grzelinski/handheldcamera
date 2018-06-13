@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 # set verbosity level
 log.setLevel(level=logging.INFO)
 
+
 # running script multiple times adds new handler every time
 # if len(log.handlers) == 0:
 #     console_handler = logging.StreamHandler()
@@ -110,7 +111,7 @@ class HandheldClient(threading.Thread):
             with self.lock_loc_rot:
                 for i, delta in enumerate(self.calculate_loc_delta(acc, time)):
                     self._delta_loc[i] += delta
-                for i, delta in enumerate(self.calculate_rot_delta(rot, time)):
+                for i, delta in enumerate(rot):
                     self._delta_rot[i] += delta
         log.debug("current location delta: {}, rotation delta: {}".format(self._delta_loc, self._delta_rot))
 
@@ -139,10 +140,6 @@ class HandheldClient(threading.Thread):
         # use scale to limit effect
         translate = lambda x: self.handheld_data.scale * 2 * x / time_delta ** 2
         return map(translate, acc)
-
-    def calculate_rot_delta(self, rot, time):
-        """Unused """
-        return rot
 
 
 class HandheldAnimate(bpy.types.Operator):
