@@ -122,10 +122,10 @@ class HandheldClient(threading.Thread):
         time = float(data[6])
 
         # apply user defined functions if exist
-        if self.acc_transform != None:
+        if self.acc_transform is not None:
             acc = self.acc_transform(acc)
 
-        if self.rot_transform != None:
+        if self.rot_transform is not None:
             rot = self.rot_transform(rot)
 
         return acc, rot, time
@@ -185,7 +185,7 @@ class HandheldAnimate(bpy.types.Operator):
                 HandheldAnimate.status = "Running on frame changed"
                 bpy.app.handlers.frame_change_pre.append(self.update_object_on_frame_changed)
                 bpy.ops.screen.animation_play()
-                if self.timer != None:
+                if self.timer is not None:
                     wm = context.window_manager
                     wm.event_timer_remove(self.timer)
                     del self.timer  # necessary ??
@@ -193,7 +193,7 @@ class HandheldAnimate(bpy.types.Operator):
             else:
                 log.debug("Switching to static update")
                 HandheldAnimate.status = "Running statically"
-                if self.timer == None:
+                if self.timer is None:
                     wm = context.window_manager
                     self.timer = wm.event_timer_add(1 / context.scene.render.fps, context.window)
                 bpy.ops.screen.animation_play()
