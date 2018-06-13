@@ -27,7 +27,7 @@ mySocket = socket.socket()
 def main():
     global send_data
     threading.Thread(target=startServer, daemon=True).start()
-    while(input("q for end, enter to kill connection: ") != 'q'):
+    while (input("q for end, enter to kill connection: ") != 'q'):
         send_data = False
         time.sleep(0.1)
         send_data = True
@@ -58,8 +58,8 @@ def serveSingleClient(conn, address):
     try:
         while send_data:
             # send fake acceleration data
-            acceleration[0] = (random.random()-0.5)/3000
-            rotation[0] = (random.random()-0.5)*20
+            acceleration[0] = (random.random() - 0.5) / 3000
+            rotation[0] = (random.random() - 0.5) * 20
             message = ''
             for i in acceleration:
                 message += str(i) + ' '
@@ -69,7 +69,7 @@ def serveSingleClient(conn, address):
             message += delimiter
 
             conn.send(message.encode())
-            time.sleep(1/100)
+            time.sleep(1 / 100)
     except socket.error:
         logging.exception("failed to send data")
     finally:
