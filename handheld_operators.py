@@ -5,6 +5,8 @@ import logging
 import threading
 
 import bpy
+from enum import Enum
+
 from . import handheld_panel
 
 log = logging.getLogger(__name__)
@@ -12,12 +14,12 @@ log = logging.getLogger(__name__)
 log.setLevel(level=logging.INFO)
 
 # running script multiple times adds new handler every time
-if len(log.handlers) == 0:
-    console_handler = logging.StreamHandler()
-    # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
-    formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
-    console_handler.setFormatter(formatter)
-    log.addHandler(console_handler)
+# if len(log.handlers) == 0:
+#     console_handler = logging.StreamHandler()
+#     # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
+#     formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
+#     console_handler.setFormatter(formatter)
+#     log.addHandler(console_handler)
 
 
 class HandheldClient(threading.Thread):
@@ -35,6 +37,7 @@ class HandheldClient(threading.Thread):
         # income data may need some user defined processing 
         self.acc_transform = acc_transform
         self.rot_transform = rot_transform
+        self.connection_state = ConnectionState.INIT
 
     @property
     def delta_loc(self):
@@ -75,22 +78,27 @@ class HandheldClient(threading.Thread):
         """Establishes connection, receives and parses data until self.stop() is called.
             Updates delta_loc and delta_rot based on received data
         """
+        client = socket.socket()
+        self.connection_state = ConnectionState.INIT
         try:
-            client_socket = socket.socket()
-            client_socket.connect((self.handheld_data.host, self.handheld_data.port))
-        except socket.error:
+            client.connect((self.handheld_data.host, self.handheld_data.port))
+            self.connection_state = ConnectionState.CONNECTING
+        except (socket.error, OSError, ConnectionError):
             log.exception("Unable to open connection")
-            self.report({'ERROR'}, "Unable to open connection. Look at console for more info...")
+            self.connection_state = ConnectionState.FAILED
         else:
             log.info("Connection established with: " + self.handheld_data.host)
+            self.connection_state = ConnectionState.SUCCESS
             handheld_panel.is_connected = True
-            # data = ''
+
             while self._receiving:
-                data = client_socket.recv(1024).decode()
+                data = client.recv(1024).decode()
                 if data is '':  # end if received empty message
                     self._receiving = False
                 self.parse_data(data)
-            client_socket.close()
+
+            client.close()
+            self.connection_state = ConnectionState.CLOSED
             log.info("Connection closed({})".format(self.handheld_data.host))
 
     def parse_data(self, data):
@@ -154,7 +162,14 @@ class HandheldAnimate(bpy.types.Operator):
         return not HandheldAnimate.running and context.area.type == 'VIEW_3D'
 
     def modal(self, context, event):
+
         if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
+
+        if self.connection_thread.connection_state == ConnectionState.FAILED:
+            # HandheldAnimate.status = "Connection dead, look at console"
+            self.report({'ERROR'}, "Connection dead, look at the console")
             self.cancel(context)
             return {'CANCELLED'}
 
@@ -166,7 +181,8 @@ class HandheldAnimate(bpy.types.Operator):
 
         if event.type == 'Y' and event.value == 'PRESS':
             log.info(
-                "timer: {}, handler: {}, event: {}-{}".format(self.timer, self.handler_exists, event.type, event.value))
+                "timer: {}, handler: {}, event: {}-{}".format(self.timer, self.handler_exists, event.type,
+                                                              event.value))
             if not self.handler_exists:
                 log.debug("Switching to per frame update")
                 HandheldAnimate.status = "Running on frame changed"
@@ -202,9 +218,11 @@ class HandheldAnimate(bpy.types.Operator):
         HandheldAnimate.running = True
         self.connection_thread = HandheldClient(context)
         self.connection_thread.start()
-        # add timer for static updates: 
+
+        # add timer for static updates:
         wm = context.window_manager
         self.timer = wm.event_timer_add(1 / context.scene.render.fps, context.window)
+
         # register operator as modal:
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -216,6 +234,9 @@ class HandheldAnimate(bpy.types.Operator):
         else:
             wm = context.window_manager
             wm.event_timer_remove(self.timer)
+
+        # if self.connection_thread.connection_state == ConnectionState.FAILED:
+        #     self.report({'ERROR'}, "Connection dead, look at the console")
 
         context.area.header_text_set()
         HandheldAnimate.status = "Connect"
@@ -235,12 +256,17 @@ class HandheldAnimate(bpy.types.Operator):
         name = scene.handheld_data.selected_object
         obj = bpy.data.objects[name]
         try:
-            self.update_object(
-                obj,
-                self.connection_thread.delta_loc,
-                self.connection_thread.delta_rot)
-        except:
+            self.update_object(obj, self.connection_thread.delta_loc, self.connection_thread.delta_rot)
+        except:  # this function may be called when context becomes invalid. Nasty solution
             bpy.app.handlers.frame_change_pre.pop()
         else:
             obj.keyframe_insert(data_path='location')
             obj.keyframe_insert(data_path='rotation_euler')
+
+
+class ConnectionState(Enum):
+    INIT = -1
+    CONNECTING = 0
+    SUCCESS = 1
+    FAILED = 2
+    CLOSED = 3
