@@ -15,12 +15,12 @@ log.setLevel(level=logging.INFO)
 
 
 # running script multiple times adds new handler every time
-# if len(log.handlers) == 0:
-#     console_handler = logging.StreamHandler()
-#     # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
-#     formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
-#     console_handler.setFormatter(formatter)
-#     log.addHandler(console_handler)
+if len(log.handlers) == 0:
+    console_handler = logging.StreamHandler()
+    # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
+    formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
+    console_handler.setFormatter(formatter)
+    log.addHandler(console_handler)
 
 
 class HandheldClient(threading.Thread):
@@ -32,6 +32,7 @@ class HandheldClient(threading.Thread):
         self._receiving = False
         # for syncing acces to deltas
         self.lock_loc_rot = threading.Lock()
+        self.speed = [0, 0, 0]
         self._delta_loc = [0, 0, 0]
         self._delta_rot = [0, 0, 0]
         self._last_parsed_packet_time = None  # used for calculating location from acceleration
