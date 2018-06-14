@@ -3,6 +3,7 @@ import socket
 import time
 import logging
 import threading
+import atexit
 
 import bpy
 from enum import Enum
@@ -14,33 +15,35 @@ log = logging.getLogger(__name__)
 log.setLevel(level=logging.DEBUG)
 
 # running script multiple times adds new handler every time
-if len(log.handlers) == 0:
-    console_handler = logging.StreamHandler()
-    # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
-    formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
-    console_handler.setFormatter(formatter)
-    log.addHandler(console_handler)
+# if len(log.handlers) == 0:
+#     console_handler = logging.StreamHandler()
+#     # console_handler.setLevel(logging.DEBUG)  # set verbosity level for handler
+#     formatter = logging.Formatter('%(levelname)s:%(threadName)s:%(message)s')
+#     console_handler.setFormatter(formatter)
+#     log.addHandler(console_handler)
 
 
 class HandheldClient(threading.Thread):
 
-    def __init__(self, context, acc_transform=None, rot_transform=None):
+    def __init__(self, context, acc_transform=None, rot_transform=None, time_transform=None):
         threading.Thread.__init__(self, daemon=True)
         self.handheld_data = context.scene.handheld_data
         # for stopping receiving loop
         self._receiving = False
         # for syncing acces to deltas
         self.lock_loc_rot = threading.Lock()
-        self._speed_loc = [0, 0, 0]
-        self._delta_loc = [0, 0, 0]
-        self._speed_rot = [0, 0, 0]
-        self._delta_rot = [0, 0, 0]
+        self._speed_loc = [0., 0., 0.]
+        self._delta_loc = [0., 0., 0.]
+        self._speed_rot = [0., 0., 0.]
+        self._delta_rot = [0., 0., 0.]
         self._last_delta_update_time = None
         self._last_parsed_packet_time = None  # used for calculating location from acceleration
         # income data may need some user defined processing 
         self.acc_transform = acc_transform
         self.rot_transform = rot_transform
+        self.time_transform = time_transform
         self.connection_state = ConnectionState.INIT
+        atexit.register(self.stop)
 
     @property
     def delta_loc(self):
@@ -54,7 +57,7 @@ class HandheldClient(threading.Thread):
     @delta_loc.setter
     def delta_loc(self, value):
         """Setter: 3 element list/tuple required """
-        for i in enumerate(self._delta_loc):
+        for i in range(len(self._delta_loc)):
             self._delta_loc[i] = float(value[i])
 
     @property
@@ -69,7 +72,7 @@ class HandheldClient(threading.Thread):
     @delta_rot.setter
     def delta_rot(self, value):
         """Setter: 3 element list/tuple required (degrees)"""
-        for i in enumerate(self._delta_rot):
+        for i in range(len(self._delta_rot)):
             self._delta_rot[i] = float(value[i])
 
     def start(self):
@@ -81,7 +84,7 @@ class HandheldClient(threading.Thread):
 
     def run(self):
         """Establishes connection, receives and parses data until self.stop() is called.
-            Updates delta_loc and delta_rot based on received data
+           Updates delta_loc and delta_rot based on received data
         """
         client = socket.socket()
         self.connection_state = ConnectionState.INIT
@@ -113,30 +116,35 @@ class HandheldClient(threading.Thread):
         for single_datagram in data:
             loc_acc, rot_acc, current_time = self.parse_single_datagram(single_datagram)
             self.update_loc_rot_speed(loc_acc, rot_acc, current_time)
-        log.debug("current loc delta: {}, rot delta: {}".format(self._delta_loc, self._delta_rot))
+        log.debug("current loc delta: {}, {}, {}, rot delta: {}, {}, {}".format(self._delta_loc[0], self._delta_loc[1],
+                                                                                self._delta_loc[2], self._delta_rot[0],
+                                                                                self._delta_rot[1], self._delta_rot[2]))
 
     def parse_single_datagram(self, single_datagram):
         data = single_datagram.split()
-        acc = [float(i) for i in data[0:3]]
-        rot = [float(i) for i in data[3:6]]
+        loc_acc = [float(i) for i in data[0:3]]
+        rot_acc = [float(i) for i in data[3:6]]
         current_time = float(data[6]) / 1000
 
         # apply user defined functions if exist
         if self.acc_transform is not None:
-            acc = self.acc_transform(acc)
+            loc_acc = self.acc_transform(loc_acc)
 
         if self.rot_transform is not None:
-            rot = self.rot_transform(rot)
+            rot_acc = self.rot_transform(rot_acc)
 
-        return acc, rot, current_time
+        if self.time_transform is not None:
+            current_time = self.time_transform(current_time)
 
-    def update_loc_rot_speed(self, loc_acc, rot_acc, time):
+        return loc_acc, rot_acc, current_time
+
+    def update_loc_rot_speed(self, loc_acc, rot_acc, current_time):
         """Changes loc, rot acceleration to current speed: v = a*t, - constant interpolation"""
         if self._last_parsed_packet_time is None:
-            self._last_parsed_packet_time = time
+            self._last_parsed_packet_time = current_time
             return [0, 0, 0]
-        time_delta = time - self._last_parsed_packet_time
-        self._last_parsed_packet_time = time
+        time_delta = current_time - self._last_parsed_packet_time
+        self._last_parsed_packet_time = current_time
 
         with self.lock_loc_rot:
             for i, a in enumerate(loc_acc):
@@ -184,7 +192,7 @@ class HandheldAnimate(bpy.types.Operator):
             return {'CANCELLED'}
 
         if self.connection_thread.connection_state == ConnectionState.FAILED:
-            # HandheldAnimate.status = "Connection dead, look at console"
+            # detect error in socket. Not ideal though...
             self.report({'ERROR'}, "Connection dead, look at the console")
             self.cancel(context)
             return {'CANCELLED'}
@@ -245,8 +253,11 @@ class HandheldAnimate(bpy.types.Operator):
                 ret.append(f(i))
             return ret
 
+        def time_transform(t):
+            return t / 1000
+
         HandheldAnimate.running = True
-        self.connection_thread = HandheldClient(context, acc_transform, rot_transform)
+        self.connection_thread = HandheldClient(context, acc_transform, rot_transform, time_transform)
         self.connection_thread.start()
 
         # add timer for static updates:
@@ -288,6 +299,7 @@ class HandheldAnimate(bpy.types.Operator):
         try:
             self.update_object(obj, self.connection_thread.delta_loc, self.connection_thread.delta_rot)
         except:  # this function may be called when context becomes invalid. Nasty solution
+            log.exception("On frame update:")
             bpy.app.handlers.frame_change_pre.pop()
         else:
             obj.keyframe_insert(data_path='location')
