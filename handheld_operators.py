@@ -45,6 +45,7 @@ class HandheldClient(threading.Thread):
         self.time_transform = time_transform
         self.partial_datagram = None
         self.connection_state = ConnectionState.INIT
+        self.gravity_compensation = None
         atexit.register(self.stop)
 
     @property
@@ -58,7 +59,7 @@ class HandheldClient(threading.Thread):
 
     @delta_loc.setter
     def delta_loc(self, value):
-        """Setter: 3 element list/tuple required """
+        """Setter: 3 element iterable required """
         for i in range(len(self._delta_loc)):
             self._delta_loc[i] = float(value[i])
 
@@ -73,7 +74,7 @@ class HandheldClient(threading.Thread):
 
     @delta_rot.setter
     def delta_rot(self, value):
-        """Setter: 3 element list/tuple required (degrees)"""
+        """Setter: 3 element iterable required (degrees)"""
         for i in range(len(self._delta_rot)):
             self._delta_rot[i] = float(value[i])
 
@@ -104,58 +105,72 @@ class HandheldClient(threading.Thread):
             first_run = True
             while self._receiving:
                 data = client.recv(1024).decode()
-                if data is '':  # end if received empty message
+                if data is '':
                     self._receiving = False
-                if first_run:
-                    first_run = False
-                    continue
-                self.parse_data(data)
+
+                formated_data = ''
+                for char in data.split('\r\n'):
+                    if char != '':
+                        formated_data += chr(int(char))
+
+                # log.debug("formatted data:\n" + formated_data)
+                self.parse_data(formated_data, first_run)
+                first_run = False
 
             client.close()
             self.connection_state = ConnectionState.CLOSED
             log.info("Connection closed({})".format(self.handheld_data.host))
 
-    def parse_data(self, data):
+    def parse_data(self, data, first_run):
         """Split income data into single datagrams, calculate and apply deltas to delta_loc, delta_rot"""
         # data ends with ';' what leaves empty string at the end 
         data = data.split(';')
-        first = data[0]
-        last = data[-1]
-        for single_datagram in data:
+        for i, single_datagram in enumerate(data):
             # dummy datagram caused if message end with ';'
             if single_datagram == '':
                 continue
 
-            # handle partial datagrams
-            if len(single_datagram.split()) < 7:
-                # the end of datagram from last message
-                if first == single_datagram:
-                    if self.partial_datagram is not None:
-                        # merge datagram and parse normally
-                        single_datagram = self.partial_datagram + single_datagram
-                    else:
-                        # there is no beginning data to merge - discard datagram
-                        continue
-                # the rest datagram will come in next message
-                if last == single_datagram:
-                    self.partial_datagram = single_datagram
+            # TODO: handle partial datagrams
+            if len(single_datagram.split()) != 7:
+                continue
+                # if i == 0:
+                #     if first_run:
+                #         continue
+                #     if self.partial_datagram is not None:
+                #         single_datagram = self.partial_datagram + '' + single_datagram
+                #     else:
+                #         continue
+                #
+                # if i == (len(data) - 1):
+                #     self.partial_datagram = single_datagram
+                #     continue
 
-            loc_acc, rot_acc, current_time = self.parse_single_datagram(single_datagram)
-            self.update_loc_rot_speed(loc_acc, rot_acc, current_time)
+            try:
+                loc_acc, rot_speed, current_time = self.parse_single_datagram(single_datagram)
+            except ValueError as e:
+                log.exception("Parse error: {}".format(single_datagram))
+            else:
+                self.update_loc_rot_speed(loc_acc, rot_speed, current_time)
 
-            log.debug("current loc speed: {:.2f}, {:.2f}, {:.2f}, rot speed: {:.2f}, {:.2f}, {:.2f}".format(
-                self._speed_loc[0],
-                self._speed_loc[1],
-                self._speed_loc[2],
-                self._speed_rot[0],
-                self._speed_rot[1],
-                self._speed_rot[2]))
+            loc_acc = [a + g for a, g in zip(loc_acc, self.gravity_compensation)]
+            log.debug(
+                "current loc speed: {:.2f}, {:.2f}, {:.2f}, rot speed: {:.2f}, {:.2f}, {:.2f}, \n"
+                "data: {} ::\n"
+                " {}, {}, {}\n".format(
+                    self._speed_loc[0],
+                    self._speed_loc[1],
+                    self._speed_loc[2],
+                    self._speed_rot[0],
+                    self._speed_rot[1],
+                    self._speed_rot[2],
+                    single_datagram,
+                    list(loc_acc), list(rot_speed), current_time))
 
     def parse_single_datagram(self, single_datagram):
         data = single_datagram.split()
         loc_acc = [float(i) for i in data[0:3]]
         rot_speed = [float(i) for i in data[3:6]]
-        current_time = float(data[6]) / 1000
+        current_time = float(data[6])
 
         # apply user defined functions if exist
         if self.acc_transform is not None:
@@ -167,6 +182,10 @@ class HandheldClient(threading.Thread):
         if self.time_transform is not None:
             current_time = self.time_transform(current_time)
 
+        # first incoming datagram is used for gravity compensation
+        if self.gravity_compensation is None:
+            self.gravity_compensation = [-i for i in loc_acc]
+
         return loc_acc, rot_speed, current_time
 
     def update_loc_rot_speed(self, loc_acc, rot_speed, current_time):
@@ -177,18 +196,23 @@ class HandheldClient(threading.Thread):
         time_delta = current_time - self._last_parsed_packet_time
         self._last_parsed_packet_time = current_time
 
+        if time_delta > 1 or time_delta < 0:
+            return
+
+        # loc_acc = [a + g for a, g in zip(loc_acc, self.gravity_compensation)]
+
         with self.lock_loc_rot:
             for i, a in enumerate(loc_acc):
                 self._speed_loc[i] += a * time_delta
 
             for i, a in enumerate(rot_speed):
-                self._speed_rot[i] += a
+                self._speed_rot[i] = a
 
     def update_loc_rot_delta(self):
-        if self._last_delta_update_time is None:
-            self._last_delta_update_time = time.time()
-            return
         current_time = time.time()
+        if self._last_delta_update_time is None:
+            self._last_delta_update_time = current_time
+            return
         time_delta = current_time - self._last_delta_update_time
         self._last_delta_update_time = current_time
 
@@ -271,12 +295,10 @@ class HandheldAnimate(bpy.types.Operator):
 
     def execute(self, context):
         def acc_transform(acc):
-            for i in acc:
-                yield i/16384 * 9.8
+            return [i / 16384 * 9.8 for i in acc]
 
         def rot_transform(rot):
-            for i in rot:
-                yield i/131
+            return [i / 131 for i in rot]
 
         def time_transform(t):
             return t / 1000
@@ -300,9 +322,6 @@ class HandheldAnimate(bpy.types.Operator):
         else:
             wm = context.window_manager
             wm.event_timer_remove(self.timer)
-
-        # if self.connection_thread.connection_state == ConnectionState.FAILED:
-        #     self.report({'ERROR'}, "Connection dead, look at the console")
 
         context.area.header_text_set()
         HandheldAnimate.status = "Connect"
