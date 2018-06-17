@@ -65,7 +65,7 @@ def serveSingleClient(conn, address):
                 message += str(i) + ' '
             for i in rotation:
                 message += str(i) + ' '
-            message += str(time.time()*1000) + ' '
+            message += str(time.time() * 1000) + ' '
             message += delimiter
 
             conn.send(message.encode())
