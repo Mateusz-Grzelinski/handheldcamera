@@ -31,7 +31,7 @@ class HandheldClient(threading.Thread):
         self.handheld_data = context.scene.handheld_data
         # for stopping receiving loop
         self._receiving = False
-        # for syncing acces to deltas
+        # for syncing access to deltas
         self.lock_loc_rot = threading.Lock()
         self._speed_loc = [0., 0., 0.]
         self._delta_loc = [0., 0., 0.]
@@ -46,6 +46,8 @@ class HandheldClient(threading.Thread):
         self.partial_datagram = None
         self.connection_state = ConnectionState.INIT
         self.gravity_compensation = None
+        self.packet_counter = 0
+        self.mean = [0, 0, 0]
         atexit.register(self.stop)
 
     @property
@@ -55,7 +57,7 @@ class HandheldClient(threading.Thread):
         tmp = self._delta_loc
         with self.lock_loc_rot:
             self._delta_loc = [0, 0, 0]
-        return tmp
+        return [0,0,0]
 
     @delta_loc.setter
     def delta_loc(self, value):
@@ -108,13 +110,13 @@ class HandheldClient(threading.Thread):
                 if data is '':
                     self._receiving = False
 
-                formated_data = ''
-                for char in data.split('\r\n'):
-                    if char != '':
-                        formated_data += chr(int(char))
+                # formated_data = ''
+                # for char in data.split('\r\n'):
+                #     if char != '':
+                #         formated_data += chr(int(char))
 
-                # log.debug("formatted data:\n" + formated_data)
-                self.parse_data(formated_data, first_run)
+                # log.debug("formatted data:\n" + data)
+                self.parse_data(data, first_run)
                 first_run = False
 
             client.close()
@@ -127,11 +129,12 @@ class HandheldClient(threading.Thread):
         data = data.split(';')
         for i, single_datagram in enumerate(data):
             # dummy datagram caused if message end with ';'
-            if single_datagram == '':
+            if single_datagram == '' or single_datagram == '\r\n':
                 continue
 
             # TODO: handle partial datagrams
             if len(single_datagram.split()) != 7:
+                log.debug("invalid packet length:: {}".format(single_datagram))
                 continue
                 # if i == 0:
                 #     if first_run:
@@ -150,9 +153,9 @@ class HandheldClient(threading.Thread):
             except ValueError as e:
                 log.exception("Parse error: {}".format(single_datagram))
             else:
-                self.update_loc_rot_speed(loc_acc, rot_speed, current_time)
+                if self.packet_counter > 10:
+                    self.update_loc_rot_speed(loc_acc, rot_speed, current_time)
 
-            loc_acc = [a + g for a, g in zip(loc_acc, self.gravity_compensation)]
             log.debug(
                 "current loc speed: {:.2f}, {:.2f}, {:.2f}, rot speed: {:.2f}, {:.2f}, {:.2f}, \n"
                 "data: {} ::\n"
@@ -171,6 +174,7 @@ class HandheldClient(threading.Thread):
         loc_acc = [float(i) for i in data[0:3]]
         rot_speed = [float(i) for i in data[3:6]]
         current_time = float(data[6])
+        self.packet_counter += 1
 
         # apply user defined functions if exist
         if self.acc_transform is not None:
@@ -182,9 +186,14 @@ class HandheldClient(threading.Thread):
         if self.time_transform is not None:
             current_time = self.time_transform(current_time)
 
-        # first incoming datagram is used for gravity compensation
+        # first 10 incoming datagrams is used for gravity compensation
         if self.gravity_compensation is None:
-            self.gravity_compensation = [-i for i in loc_acc]
+            if self.packet_counter >= 10:
+                self.gravity_compensation = [-i / (self.packet_counter-1) for i in self.mean]  # [-i for i in loc_acc]
+            else:
+                self.mean = [i + j for i, j in zip(self.mean, loc_acc)]
+        else:
+            loc_acc = [a + g for a, g in zip(loc_acc, self.gravity_compensation)]
 
         return loc_acc, rot_speed, current_time
 
@@ -198,8 +207,6 @@ class HandheldClient(threading.Thread):
 
         if time_delta > 1 or time_delta < 0:
             return
-
-        # loc_acc = [a + g for a, g in zip(loc_acc, self.gravity_compensation)]
 
         with self.lock_loc_rot:
             for i, a in enumerate(loc_acc):
