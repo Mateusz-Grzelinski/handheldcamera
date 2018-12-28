@@ -26,7 +26,7 @@ mySocket = socket.socket()
 
 def main():
     global send_data
-    threading.Thread(target=startServer, daemon=True).start()
+    threading.Thread(target=start_server, daemon=True).start()
     while input("q for end, enter to kill connection: ") != 'q':
         send_data = False
         time.sleep(0.1)
@@ -34,7 +34,7 @@ def main():
     mySocket.close()
 
 
-def startServer():
+def start_server():
     global mySocket
     host = "127.0.0.1"
     port = 5000
@@ -46,14 +46,14 @@ def startServer():
         conn, addr = mySocket.accept()
         conn.settimeout(10)
         logging.info("connection from " + str(addr))
-        threading.Thread(target=serveSingleClient, args=(conn, addr),
+        threading.Thread(target=serve_single_client, args=(conn, addr),
                          daemon=True).start()
         # if not send_data:
         #     mySocket.close()
         #     break
 
 
-def serveSingleClient(conn, address):
+def serve_single_client(conn, address):
     global send_data
     try:
         while send_data:
