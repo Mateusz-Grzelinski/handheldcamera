@@ -27,21 +27,18 @@ bl_info = {
     "location": "View3D > Tool Shelf > Animation",
     "warning": "This addon is stable, still in development.",
     "wiki_url": "",
-    "category": "Animation" }
-
+    "category": "Animation"}
 
 import bpy
-
 
 # load and reload submodules
 ##################################
 
 import importlib
 from . import developer_utils
+
 importlib.reload(developer_utils)
 modules = developer_utils.setup_addon_modules(__path__, __name__, "bpy" in locals())
-
-
 
 # register
 ##################################
@@ -49,18 +46,22 @@ modules = developer_utils.setup_addon_modules(__path__, __name__, "bpy" in local
 import traceback
 from .handheld_data import HandheldData
 
+
 def register():
-    try: 
+    try:
         bpy.utils.register_module(__name__)
         bpy.types.Scene.handheld_data = bpy.props.PointerProperty(type=HandheldData)
-    except: traceback.print_exc()
+    except:
+        traceback.print_exc()
 
     print("Registered {} with {} modules".format(bl_info["name"], len(modules)))
 
+
 def unregister():
-    try: 
+    try:
         del bpy.types.Scene.handheld_data
         bpy.utils.unregister_module(__name__)
-    except: traceback.print_exc()
+    except:
+        traceback.print_exc()
 
     print("Unregistered {}".format(bl_info["name"]))
