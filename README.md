@@ -1,4 +1,4 @@
-# The ultimate handheld camera animation
+# Handheld camera animation
 
 ## Functionality
 This addon allows you to capture yours phone movement data (in conjunction with an app) and use it to animate object in your scene  in semi real time.
