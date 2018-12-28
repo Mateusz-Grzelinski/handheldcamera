@@ -1,15 +1,12 @@
-**Development has been stopped**
+**Development has been stopped. In the end, project failed to capture movement**
 
-# Handheld camera animation
-
-## Functionality (client)
+## Handheld camera Blender addon (client)
 This addon allows you to capture yours accelerometer and gyroscope movement data and use it to animate object in your scene  in semi real time.
 
 ## Gyroscope and accelometer data (server)
 
 EW tried to use Arduino + MPU 6050+ ESP8266 
 https://github.com/mblasiak/GyroController
-
 
 Maybe it is possible to get data from your phone.
 
