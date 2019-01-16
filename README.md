@@ -1,5 +1,7 @@
 **Development has been stopped. In the end, project failed to capture movement**
 
+Tested against Blender 2.79. No plans for porting
+
 ## Handheld camera Blender addon (client)
 This addon allows you to capture yours accelerometer and gyroscope movement data and use it to animate object in your scene  in semi real time.
 
