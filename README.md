@@ -1,4 +1,4 @@
-**Development has been stopped. In the end, project failed to capture movement**
+**Development has been stopped. In the end, project failed to capture position, rotation worked quite well**
 
 Tested against Blender 2.79. No plans for porting
 
